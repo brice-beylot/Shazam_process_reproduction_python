@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 import librosa
 import matplotlib.pyplot as plt
 from scipy.ndimage import maximum_filter
@@ -18,6 +19,7 @@ def bandpass_filter(y, sr, lowcut=300, highcut=3700):
 def analyze_music(music_path):
     # Load audio file
     filename = f"Musiques/{music_path}"
+    title = music_path.split('.')[0]  # Extract title from filename
     # Resample to 8 kHz for better performance
     y, sr = librosa.load(filename, sr=8000)
     # Apply bandpass filter
@@ -52,12 +54,12 @@ def analyze_music(music_path):
     delta_time = hop_length/sr
     delta_freq = sr/n_fft
     # Creation of a filter that covers 0.5 seconds in the time domain
-    time_window = int(0.5 * 1/delta_time)
+    time_window_filter = int(0.5 * 1/delta_time)
     # Creation of a filter that covers 200 Hz in the frequency domain
-    freq_window = int(200 * 1/delta_freq)
+    freq_window_filter = int(200 * 1/delta_freq)
     print(
-        f"Filter width (time): {time_window} frames, Filter height (frequency): {freq_window} bins")
-    window_shape = (freq_window, time_window)
+        f"Filter width (time): {time_window_filter} frames, Filter height (frequency): {freq_window_filter} bins")
+    window_shape = (freq_window_filter, time_window_filter)
     # Apply maximum filter
     neighborhood = np.ones(window_shape)
     local_maxima = (S_db == maximum_filter(S_db, footprint=neighborhood))
@@ -86,10 +88,9 @@ def analyze_music(music_path):
         amplitude_db = S_db[peak[0], peak[1]]
         constellation_map.append([time_sec, freq_hz, amplitude_db])
     constellation_map = np.array(constellation_map)
-    print(constellation_map)
     print(
         f"S_db shape : {S_db.shape}, Constellation map size: {len(constellation_map)}")
-
+    """
     plt.figure(figsize=(12, 6))
     librosa.display.specshow(
         S_db, sr=sr, hop_length=hop_length, x_axis='time', y_axis='linear')
@@ -101,6 +102,26 @@ def analyze_music(music_path):
     plt.title('Constellation Map (Corrected)')
     plt.colorbar(format='%+2.0f dB')
     plt.show()
+    """
+    # Example: 1-second time window, 200 Hz frequency window
+    time_hash_window = 1.0  # seconds
+    freq_hash_window = 300  # Hz
+
+    # For each anchor point, find targets in this window
+    hash_table = defaultdict(list)
+    for anchor in constellation_map:
+        anchor_time, anchor_freq, _ = anchor
+        targets = []
+        for point in constellation_map:
+            time, freq, _ = point
+            if (anchor_time < time <= anchor_time + time_hash_window and
+                    anchor_freq - freq_hash_window/2 <= freq <= anchor_freq + freq_hash_window/2):
+                hash_table[(int(anchor_freq), int(freq), round(anchor_time-time, 2))
+                           ].append((title, int(anchor_time)))
+    print(f"Generated {len(hash_table)} hashes for {music_path}")
+    # Print first 5 hash entries
+    for (anchor_freq, freq, time_diff), entries in list(hash_table.items())[:5]:
+        print(f"  Hash ({anchor_freq}, {freq}, {time_diff}): {entries}")
 
 
 if __name__ == "__main__":
